@@ -3,7 +3,7 @@ Type definitions for radio modeling
 """
 
 from dataclasses import dataclass
-from typing import Tuple, List, Union, Optional
+from typing import Tuple, List
 import numpy as np
 import pandas as pd
 from datetime import datetime
@@ -39,7 +39,7 @@ class Antenna:
 
     @classmethod
     def from_dataframe(cls, gain_ant: pd.DataFrame, rad_eff: float,
-                      valid_freqs: Tuple[float, float] = (0.0, 0.0)) -> 'Antenna':
+                       valid_freqs: Tuple[float, float] = (0.0, 0.0)) -> 'Antenna':
         """Create an Antenna instance from a DataFrame"""
 
         # Create the gain interpolator
@@ -50,10 +50,10 @@ class Antenna:
 
     @classmethod
     def from_file(cls, file_pattern_path: str, rad_eff: float,
-                 valid_freqs: Tuple[float, float] = (0.0, 0.0),
-                 power_tag: str = 'gains',
-                 declination_tag: str = 'alphas',
-                 azimuth_tag: str = 'betas') -> 'Antenna':
+                  valid_freqs: Tuple[float, float] = (0.0, 0.0),
+                  power_tag: str = 'gains',
+                  declination_tag: str = 'alphas',
+                  azimuth_tag: str = 'betas') -> 'Antenna':
         """Create an Antenna instance from a file"""
         if not file_pattern_path.endswith('.cut'):
             raise ValueError("The power pattern file must be a .cut file")
@@ -84,6 +84,21 @@ class Antenna:
     def get_gain_value(self, alpha: float, beta: float) -> float:
         return self.gain_func((alpha, beta))
 
+    def get_gain_values(self, alphas: np.ndarray, betas: np.ndarray) -> np.ndarray:
+        """
+        Vectorized gain lookup for arrays of spherical coordinates (in radians).
+        Accepts broadcastable shapes; returns a 1-D array after raveling inputs.
+        """
+        alphas = np.asarray(alphas)
+        betas = np.asarray(betas)
+        # Broadcast to a common shape, then stack as (N, 2)
+        common_shape = np.broadcast_shapes(alphas.shape, betas.shape)
+        a = np.broadcast_to(alphas, common_shape).ravel()
+        b = np.broadcast_to(betas, common_shape).ravel()
+        pts = np.stack((a, b), axis=1)
+        vals = self.gain_func(pts)
+        return np.asarray(vals).reshape(common_shape)
+
     def get_def_angles(self) -> Tuple[np.ndarray, np.ndarray]:
         return (np.unique(self.gain_pat['alphas']),
                 np.unique(self.gain_pat['betas']))
@@ -102,9 +117,9 @@ class Antenna:
         g_neg = gain_pat[gain_pat['betas'] == beta + 180]
 
         alphas = np.concatenate([-g_neg['alphas'].values[:-1][::-1],
-                               g_pos['alphas'].values[1:]])
+                                g_pos['alphas'].values[1:]])
         gains = np.concatenate([g_neg['gains'].values[:-1][::-1],
-                              g_pos['gains'].values[1:]])
+                               g_pos['gains'].values[1:]])
 
         return alphas, gains
 
@@ -142,13 +157,15 @@ class Instrument:
 
     @classmethod
     def from_scalar(cls, ant: Antenna, phy_temp: float, center_freq: float,
-                   bandwidth: float, signal: float, freq_chan: int = 1,
-                   coords: List[float] = None) -> 'Instrument':
+                    bandwidth: float, signal: float, freq_chan: int = 1,
+                    coords: List[float] = None) -> 'Instrument':
         """Create an Instrument instance with a scalar signal"""
         if coords is None:
             coords = []
-        signal_func = lambda *args: signal
-        return cls(ant, phy_temp, center_freq, bandwidth, signal_func, freq_chan, coords)
+
+        def _signal_func(*_args):
+            return signal
+        return cls(ant, phy_temp, center_freq, bandwidth, _signal_func, freq_chan, coords)
 
     def get_coords(self) -> List[float]:
         return self.coords
@@ -173,8 +190,8 @@ class Instrument:
         bw_RX = self.get_bandwidth()
         delta_freq = bw_RX/freq_chan
         rng_freq = np.linspace(-bw_RX/2 + delta_freq/2,
-                             bw_RX/2 - delta_freq/2,
-                             freq_chan)
+                               bw_RX/2 - delta_freq/2,
+                               freq_chan)
         return self.get_center_freq() + rng_freq
 
     def get_inst_signal(self) -> callable:
@@ -207,8 +224,8 @@ class Trajectory:
 
     @classmethod
     def from_file(cls, file_path: str, time_tag: str = 'times',
-                 elevation_tag: str = 'altitudes', azimuth_tag: str = 'azimuths',
-                 distance_tag: str = 'distances') -> 'Trajectory':
+                  elevation_tag: str = 'altitudes', azimuth_tag: str = 'azimuths',
+                  distance_tag: str = 'distances') -> 'Trajectory':
         """Create a Trajectory instance from a file"""
         if file_path.endswith('.arrow'):
             # read arrow file
@@ -237,7 +254,7 @@ class Trajectory:
         return self.traj
 
     def get_traj_between(self, t0: datetime, t1: datetime,
-                        skipmissing: bool = True) -> pd.DataFrame:
+                         skipmissing: bool = True) -> pd.DataFrame:
         mask = (self.traj['times'] >= t0) & (self.traj['times'] <= t1)
         return self.traj[mask]
 
@@ -284,8 +301,8 @@ class Observation:
 
     @classmethod
     def from_dates(cls, start_date: datetime, stop_date: datetime,
-                  trajectory: Trajectory, instrument: Instrument,
-                  filt_funcs: Tuple = ()) -> 'Observation':
+                   trajectory: Trajectory, instrument: Instrument,
+                   filt_funcs: Tuple = ()) -> 'Observation':
         """Create an Observation instance from dates"""
         # Filter date and other from trajectory
         traj = trajectory.get_traj_between(start_date, stop_date)
@@ -368,8 +385,8 @@ class Constellation:
 
     @classmethod
     def from_observation(cls, sats: pd.DataFrame, observation: Observation,
-                        sat_tmt: Instrument, lnk_bdgt_mdl: callable = None,
-                        filt_funcs: Tuple = ()) -> 'Constellation':
+                         sat_tmt: Instrument, lnk_bdgt_mdl: callable = None,
+                         filt_funcs: Tuple = ()) -> 'Constellation':
         """Create a Constellation instance from an observation"""
         if lnk_bdgt_mdl is None:
             # Import here to avoid circular import
@@ -393,10 +410,10 @@ class Constellation:
 
     @classmethod
     def from_file(cls, file_path: str, observation: Observation,
-                 sat_tmt: Instrument, lnk_bdgt_mdl: callable = None,
-                 name_tag: str = 'sat', time_tag: str = 'time_stamps',
-                 elevation_tag: str = 'altitudes', azimuth_tag: str = 'azimuths',
-                 distance_tag: str = 'distances', filt_funcs: Tuple = ()) -> 'Constellation':
+                  sat_tmt: Instrument, lnk_bdgt_mdl: callable = None,
+                  name_tag: str = 'sat', time_tag: str = 'time_stamps',
+                  elevation_tag: str = 'altitudes', azimuth_tag: str = 'azimuths',
+                  distance_tag: str = 'distances', filt_funcs: Tuple = ()) -> 'Constellation':
         """Create a Constellation instance from a file"""
         with pa.memory_map(file_path, 'r') as source:
             table = pa.ipc.open_file(source).read_all()

@@ -1,11 +1,30 @@
 # RadioMdlPy
 
-A Python package focused on the simulation of radio observation, e.g. for radio astronomy. Originally, it is a Julia package created by Dr. Samuel Thé (https://github.com/SJJThe). Modified version of the Julia codes are found at `Julia/` directory.
+RadioMdlPy is a sophisticated Python framework designed for modeling radio astronomy observations, with particular emphasis on simulating the impact of satellite constellations (such as Starlink) on radio telescope observations. The framework provides end-to-end simulation capabilities from trajectory generation to power spectral density analysis, enabling researchers and astronomers to assess and mitigate interference from satellite mega-constellations.
+
+<br />
+
+Originally, it is a Julia package created by Dr. Samuel Thé (https://github.com/SJJThe). Modified version of the Julia codes are found at `Julia/` directory.
 
 ## Requirements
 
 - **Python**: 3.9 or later
 - **Dependencies**: numpy, scipy, pandas, pyarrow, numba
+
+## Modules (at src/ directory)
+
+- `RadioMdl.py`: Core constants and utilities
+- `antenna_pattern.py`: Antenna pattern calculations
+- `astro_mdl.py`: Astronomical modeling
+- `coord_frames.py`: Coordinate frame transformations
+- `obs_mdl.py`: Observation modeling
+- `radio_io.py`: Radio I/O operations
+- `radio_types.py`: Radio data types
+- `sat_mdl.py`: Satellite modeling
+
+## Tutorial Resources
+
+The `tutorial/` directory contains additional learning resources and examples and serves as a reference implementation for the modeling and simulation of radio astronomy observations. It consists of Jupyter Notebooks and their CLI scripts, and also includes data creation scripts for trajectory files of a star and satellite at the `tutorial/data_creation/` directory. Details can be found at the README inside the `tutorial/` directory.
 
 ## Installation
 
@@ -23,36 +42,15 @@ radiomdlpy_env\Scripts\activate
 # On macOS/Linux:
 source radiomdlpy_env/bin/activate
 
-# Install the package
-pip install RadioMdlPy
-
 # When you're done, deactivate the virtual environment
 deactivate
 ```
 
 ### Installation from GitHub Repository
 
-#### Option 1: Install from GitHub Releases (Recommended for End Users)
+#### Option 1: Clone and Install using Git (Recommended)
 
-If the package has been released on GitHub, you can install it directly:
-
-```bash
-# Install from GitHub releases (if available)
-pip install https://github.com/spectrumx/RadioMdlPy/releases/latest/download/radiomdlpy-1.0.0-py3-none-any.whl
-```
-
-#### Option 2: Install from GitHub Repository (Development Version)
-
-To install the latest development version directly from GitHub:
-
-```bash
-# Install directly from GitHub repository
-pip install git+https://github.com/spectrumx/RadioMdlPy.git
-```
-
-#### Option 3: Clone and Install (For Development)
-
-To install from the source repository for development:
+To install from the source repository:
 
 ```bash
 # Clone the repository
@@ -66,14 +64,27 @@ radiomdlpy_env\Scripts\activate
 # On macOS/Linux:
 source radiomdlpy_env/bin/activate
 
-# Install in development mode (editable install)
+# Install
 pip install -e .
 ```
 
-**Benefits of development mode:**
-- Changes to source code are immediately available without reinstalling
-- Perfect for development, testing, and contributing
-- Installs all dependencies automatically
+#### Option 2: Install from GitHub Releases (Recommended for End Users)
+
+If the package has been released on GitHub, you can install it directly:
+
+```bash
+# Install from GitHub releases (if available)
+pip install https://github.com/spectrumx/RadioMdlPy/releases/latest/download/radiomdlpy-1.2.0-py3-none-any.whl
+```
+
+#### Option 3: Install from GitHub Repository
+
+To install the latest development version directly from GitHub:
+
+```bash
+# Install directly from GitHub repository
+pip install git+https://github.com/spectrumx/RadioMdlPy.git
+```
 
 ### Dependencies
 
@@ -120,50 +131,6 @@ from astro_mdl import estim_casA_flux, power_to_temperature
 
 # Use functions
 result = model_observed_temp(observation, sky_model, constellation)
-```
-
-## Modules
-
-- `RadioMdl`: Core constants and utilities
-- `antenna_pattern`: Antenna pattern calculations
-- `astro_mdl`: Astronomical modeling
-- `coord_frames`: Coordinate frame transformations
-- `obs_mdl`: Observation modeling
-- `radio_io`: Radio I/O operations
-- `radio_types`: Radio data types
-- `sat_mdl`: Satellite modeling
-
-## Development
-
-### Setup Development Environment
-
-1. **Create and activate a virtual environment:**
-
-```bash
-# Create a virtual environment
-python -m venv radiomdlpy_dev
-
-# Activate the virtual environment
-# On Windows:
-radiomdlpy_dev\Scripts\activate
-# On macOS/Linux:
-source radiomdlpy_dev/bin/activate
-```
-
-2. **Install in Development Mode**
-
-To install the package in development mode (editable install):
-
-```bash
-pip install -e .
-```
-
-### Install with Development Dependencies
-
-To install with development tools (pytest, black, flake8):
-
-```bash
-pip install -e ".[dev]"
 ```
 
 ## Building
