@@ -31,7 +31,7 @@ def map_sphere(pattern: np.ndarray, alphas: np.ndarray, betas: np.ndarray) -> tu
 
 
 def radiated_power_to_gain(rad_pow: np.ndarray, alphas: np.ndarray,
-                         betas: np.ndarray, eta_rad: float = 1.0) -> np.ndarray:
+                           betas: np.ndarray, eta_rad: float = 1.0) -> np.ndarray:
     """
     Yields the gain pattern of an antenna, in dB, given a radiated power pattern.
     It is assumed that the radiated power includes the radiation efficiency.
@@ -52,7 +52,7 @@ def radiated_power_to_gain(rad_pow: np.ndarray, alphas: np.ndarray,
 
 
 def interpolate_gain(gain: np.ndarray, alphas: np.ndarray,
-                    betas: np.ndarray) -> RegularGridInterpolator:
+                     betas: np.ndarray) -> RegularGridInterpolator:
     """
     Create gain interpolator from gain pattern and angles
     """

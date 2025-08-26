@@ -4,11 +4,11 @@ Input/Output functions for radio modeling
 
 import numpy as np
 import pandas as pd
-import pyarrow as pa
-import warnings
+# import warnings
+
 
 def power_pattern_from_cut_file(file_path: str, free_sp_imp: float = 377,
-                              verb: bool = False) -> pd.DataFrame:
+                                verb: bool = False) -> pd.DataFrame:
     """
     Yields the radiated power pattern, in dBW, of an antenna, times the radiation
     efficiency from the `.cut` file containing co- and cross-polarization E-field.
@@ -61,9 +61,10 @@ def power_pattern_from_cut_file(file_path: str, free_sp_imp: float = 377,
     # Rounding as in Julia
     decimal_places = max(0, -int(np.floor(np.log10(abs(α_step - round(α_step))))))
     pattern['alpha'] = pattern['alpha'].round(decimal_places)
-    print(pattern.head())
+    # print(pattern.head())
 
-    warnings.warn("This function assumes Daniel Sheen generated files")
+    # warnings.warn("This power_pattern_from_cut_file function assumes Daniel Sheen generated files")
+    print("This power_pattern_from_cut_file function assumes Daniel Sheen generated files")
 
     # Check that α ∈ [-180,180[ and β ∈ [0, 180[
     pattern = pattern[

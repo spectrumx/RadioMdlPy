@@ -56,6 +56,7 @@ def estim_virgoA_flux(center_freq: float) -> float:
     """
     return 10 ** (5.023 - 0.856 * np.log10(center_freq * 1e-6))
 
+
 def antenna_mdl_ITU(gain_max, half_beamwidth, alphas, betas):
     """
     Create ITU recommended gain profile.

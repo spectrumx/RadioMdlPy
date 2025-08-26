@@ -4,7 +4,7 @@ The Python implementation is organized as follows:
 - **Binary files**: Some components requires heavy computations, thus various `.npy` files, which are bunary NumPy arrays, are pre-computed so that they can be loaded to reduce computation time instead of direct computations
 - **tuto_mdl_obs_python_simplified.ipynb**: Jupyter notebook for python which produces the same results with the Julia notebook (`Julia/test/tuto_mdl_obs_modified.ipynb`)
 - **test_tuto_mdl_obs_python_simplified.py**: Python script to run in a command line interface (CLI) that is equivalent to the above notebook
-- ***_simplified_load.***: Thes Jupyter notebook and python script are basically the same with above codes but these will load pre-computed binary files (`.npy`) instead of direct computions for some parts, thus these will generate result much faster than above codes
+- ***_simplified_load.***: These Jupyter notebook and its CLI python script are basically the same with above codes but these will load pre-computed binary files (`.npy`) instead of direct computions for some parts, thus these will generate result much faster than above codes. This Jupyter notebook contains output figures.
 - ***_250401.***: Testing Jupyter notebook and python script with newly generated Arrow files from the data creation scripts for different time span (see **Data Creation Scripts** section below)
 - **Data directory**: `tutorial/data/` - Contains input data files
 - **Data creation directory**: `tutorial/data_creation/` - Contains scripts to generate input data files, .arrow, which are for getting trajectories of a star and a satellite with user-specified date and time. Currently, Cas A (Cassiopeia A) and Starlink satellite are used.

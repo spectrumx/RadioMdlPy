@@ -4,12 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "RadioMdlPy"
-version = "1.0.0"
+version = "1.2.0"
 description = "A Python package for radio modeling calculations"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
-    {name = "Your Name", email = "your.email@example.com"}
+    {name = "Dae Kun Kwon", email = "dkwon@nd.edu"}
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",

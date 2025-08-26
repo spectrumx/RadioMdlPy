@@ -11,9 +11,9 @@ from . import radio_io
 from . import radio_types
 from . import sat_mdl
 
-__version__ = "0.1.0"
-__author__ = "Your Name"
-__email__ = "your.email@example.com"
+__version__ = "1.2.0"
+__author__ = "Dae Kun Kwon"
+__email__ = "dkwon@nd.edu"
 
 __all__ = [
     "k_boltz",

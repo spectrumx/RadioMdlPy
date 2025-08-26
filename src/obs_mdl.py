@@ -1,145 +1,141 @@
-"""
-Observation modeling functions for radio astronomy
-"""
+# """
+# Observation modeling functions for radio astronomy
+# """
 
 import numpy as np
-from datetime import datetime
-from typing import Callable, List, Tuple
-from numba import njit
-
-# Note: We'll import classes when needed to avoid circular imports
-
-@njit
-def compute_T_sys_numba(
-    dec_tel, caz_tel, f_RX, max_gain, eta_rad, T_phy, T_RX_vals,
-    sat_dec_arr, sat_caz_arr, sat_rng_arr, sat_temp_arr, lnk_bdgt_arr, T_sky_arr
-):
-    n_freq = f_RX.shape[0]
-    T_sys_arr = np.empty(n_freq, dtype=np.float64)
-    for f_idx in range(n_freq):
-        T_sky = max_gain * T_sky_arr[f_idx]
-        T_sat = 0.0
-        n_sats = sat_dec_arr.shape[0]
-        for s_idx in range(n_sats):
-            link_val = lnk_bdgt_arr[s_idx, f_idx]
-            sat_temp = sat_temp_arr[s_idx, f_idx]
-            T_sat += link_val * sat_temp
-        T_A = 1/(4 * np.pi) * (T_sat + T_sky)
-        T_sys = T_A + (1 - eta_rad) * T_phy + T_RX_vals[f_idx]
-        T_sys_arr[f_idx] = T_sys
-    return T_sys_arr
+from typing import Callable
+from coord_frames import ground_to_beam_coord_vectorized
 
 
-def model_observed_temp(observation, sky_mdl: Callable, constellation=None) -> np.ndarray:
+def model_observed_temp(observation, sky_mdl: Callable, constellation=None, beam_avoidance=False) -> np.ndarray:
     """
-    Hybrid Numba: Model the observed temperature during an observation, ported from Julia version.
-    The outer loop is Python, the inner computation is Numba-accelerated.
-    """
-    from radio_types import Observation, Constellation, Instrument
+    Optimized using advanced NumPy operations and vectorization.
+    Vectorizes per-time across satellites and frequencies; only loops over
+    pointings to evaluate telescope gain for S satellites, then reduces to F.
 
-    # Get observation parameters
+    Args:
+        observation: Observation object containing trajectory and instrument data
+        sky_mdl: Callable function for sky model
+        constellation: Optional constellation object(s) for satellite interference
+        beam_avoidance: If True, uses non-vectorized approach for beam avoidance calculations
+    """  # noqa: E501
+
+    # Get observation parameters and sort trajectory for correct reshaping
     times = observation.get_time_stamps()
-    traj = observation.get_traj()  # DataFrame with columns: times, azimuths, elevations,
+    traj = observation.get_traj().sort_values(by='times').reset_index(drop=True)
     instrument = observation.get_instrument()
+    n_times = len(times)
+    n_pointings = len(traj) // n_times if n_times > 0 else 0
 
-    # Instrument/antenna parameters (hoist all static values)
-    bw_RX = instrument.get_bandwidth()
-    freq_chan = instrument.get_nb_freq_chan()
-    f_RX = instrument.get_center_freq_chans()
+    # Instrument/antenna parameters
+    f_RX_array = instrument.get_center_freq_chans()
+    n_freq = len(f_RX_array)
     T_RX_func = instrument.get_inst_signal()
     T_phy = instrument.get_phy_temp()
     antenna = instrument.get_antenna()
     eta_rad = antenna.get_rad_eff()
     max_gain = antenna.get_boresight_gain()
 
-    # Pre-group pointings by time for fast lookup
-    pointings_by_time = {t: df for t, df in traj.groupby('times')}
+    # Pre-shape all pointing data
+    dec_tel_grid = np.radians(90 - traj['elevations'].values.reshape(n_times, n_pointings))
+    caz_tel_grid = np.radians(-traj['azimuths'].values.reshape(n_times, n_pointings))
 
-    # Prepare constellation info if present, and pre-group satellites by time
-    cons_temps = []
-    cons_ant = []
-    cons_objs = []
-    sats_by_time_list = []
+    # Pre-compute satellite data
+    satellite_data = {}
     if constellation is not None:
         if not isinstance(constellation, list):
             constellation = [constellation]
-        for con in constellation:
-            cons_ant.append(con.get_antenna())
+        for c_idx, con in enumerate(constellation):
             sat_TX = con.get_transmitter()
-            f_sat = sat_TX.get_center_freq()
-            bw_sat = sat_TX.get_bandwidth()
-            instru_freq = instrument.get_center_freq()
-            # Check constellation is visible by receiver
-            visible_band = [
-                max(instru_freq - bw_RX/2, f_sat - bw_sat/2),
-                min(instru_freq + bw_RX/2, f_sat + bw_sat/2)
-            ]
-            visible_bw = visible_band[1] - visible_band[0]
-            if visible_bw < 0:
-                raise ValueError(f"Constellation not seen by telescope receiver")
-            cons_temps.append(sat_TX.get_inst_signal())
-            cons_objs.append(con)
-            # Pre-group satellites by time for this constellation
-            sats_by_time_list.append({t: df for t, df in con.sats.groupby('times')})
+            for time in times:
+                sats_t = con.sats[con.sats['times'] == time]
+                if len(sats_t) > 0:
+                    sat_TX_func = sat_TX.get_inst_signal()
+                    sat_temps_1f = np.array([sat_TX_func(time, f) for f in f_RX_array], dtype=np.float64)
+                    satellite_data[(c_idx, time)] = {
+                        'sat_dec': np.radians(90 - sats_t['elevations'].values),
+                        'sat_caz': np.radians(-sats_t['azimuths'].values),
+                        'sat_distances': sats_t['distances'].values,
+                        'sat_temps': np.tile(sat_temps_1f, (len(sats_t), 1)),
+                        'lnk_bdgt': con.get_lnk_bdgt_mdl(),
+                        'instru_sat': sat_TX,
+                    }
 
-    # Use the pre-allocated result array from the observation
     result = observation.get_result()
 
-    # Main simulation loop (outer loop in Python)
+    # Main simulation loop over time
     for t_idx, time in enumerate(times):
-        # Get all pointings at this time (pre-grouped)
-        pointings = pointings_by_time[time]
-        for p_idx, row in enumerate(pointings.itertuples(index=False)):
-            az = row.azimuths
-            el = row.elevations
-            dec_tel = np.radians(90 - np.array(el))
-            caz_tel = np.radians(-np.array(az))
+        dec_tel_t = dec_tel_grid[t_idx]
+        caz_tel_t = caz_tel_grid[t_idx]
 
-            # Prepare T_RX_vals and T_sky_arr for this pointing
-            T_RX_vals = np.array([T_RX_func(time, f) for f in f_RX])
-            T_sky_arr = np.array([sky_mdl(dec_tel, caz_tel, time, f) for f in f_RX])
+        # Vectorize sky model computation for all pointings and frequencies
+        T_sky_arr = np.array([
+            [sky_mdl(dec, caz, time, f) for f in f_RX_array]
+            for dec, caz in zip(dec_tel_t, caz_tel_t)
+        ], dtype=np.float64)
+        T_RX_vals = np.array([T_RX_func(time, f) for f in f_RX_array], dtype=np.float64)
 
-            # Prepare satellite arrays if needed
-            if cons_objs:
-                for c_idx, con in enumerate(cons_objs):
-                    instru_sat = con.get_transmitter()
-                    lnk_bdgt = con.get_lnk_bdgt_mdl()
-                    sat_TX_func = cons_temps[c_idx]
-                    sats_t = sats_by_time_list[c_idx].get(time, None)
-                    if sats_t is not None and len(sats_t) > 0:
-                        sat_dec_arr = np.radians(90 - sats_t['elevations'].to_numpy())
-                        sat_caz_arr = np.radians(-sats_t['azimuths'].to_numpy())
-                        sat_rng_arr = sats_t['distances'].to_numpy()
-                        n_sats = sat_dec_arr.shape[0]
-                        # Prepare arrays for each frequency
-                        lnk_bdgt_arr = np.empty((n_sats, len(f_RX)), dtype=np.float64)
-                        sat_temp_arr = np.empty((n_sats, len(f_RX)), dtype=np.float64)
-                        for s_idx in range(n_sats):
-                            for f_idx, f_bin in enumerate(f_RX):
-                                lnk_bdgt_arr[s_idx, f_idx] = lnk_bdgt(
-                                    dec_tel, caz_tel, instrument,
-                                    sat_dec_arr[s_idx], sat_caz_arr[s_idx], sat_rng_arr[s_idx],
-                                    instru_sat, f_bin
-                                )
-                                sat_temp_arr[s_idx, f_idx] = sat_TX_func(time, f_bin)
+        T_sat_total = np.zeros((n_pointings, n_freq), dtype=np.float64)
+
+        for c_idx, con in enumerate(constellation or []):
+            sat_key = (c_idx, time)
+            if sat_key in satellite_data:
+                sd = satellite_data[sat_key]
+                n_sats = len(sd['sat_dec'])
+
+                if n_sats > 0:
+                    if beam_avoidance:
+                        # Use non-vectorized approach for beam avoidance
+                        # Process each pointing and satellite combination individually
+                        # to avoid broadcasting issues with coordinate transformations
+                        for p_idx in range(n_pointings):
+                            dec_tel = dec_tel_t[p_idx]
+                            caz_tel = caz_tel_t[p_idx]
+
+                            for s_idx in range(len(sd['sat_dec'])):
+                                sat_dec = sd['sat_dec'][s_idx]
+                                sat_caz = sd['sat_caz'][s_idx]
+                                sat_dist = sd['sat_distances'][s_idx]
+
+                                for f_idx in range(n_freq):
+                                    freq = f_RX_array[f_idx]
+
+                                    link_val = sd['lnk_bdgt'](
+                                        dec_tel, caz_tel, instrument, sat_dec,
+                                        sat_caz, sat_dist, sd['instru_sat'], freq
+                                    )
+
+                                    T_sat_total[p_idx, f_idx] += link_val * sd['sat_temps'][s_idx, f_idx]
                     else:
-                        sat_dec_arr = np.empty(0)
-                        sat_caz_arr = np.empty(0)
-                        sat_rng_arr = np.empty(0)
-                        lnk_bdgt_arr = np.empty((0, len(f_RX)))
-                        sat_temp_arr = np.empty((0, len(f_RX)))
-            else:
-                sat_dec_arr = np.empty(0)
-                sat_caz_arr = np.empty(0)
-                sat_rng_arr = np.empty(0)
-                lnk_bdgt_arr = np.empty((0, len(f_RX)))
-                sat_temp_arr = np.empty((0, len(f_RX)))
+                        # Use optimized vectorized approach for normal case
+                        # Precompute per-satellite, per-frequency kernel independent of pointing
+                        # Kernel[S, F] = gain_sat[S] * FSPL_inv[S, F] * T_sat[S, F]
+                        sat_ant = sd['instru_sat'].get_antenna()
+                        dec_tel_sat = sd['sat_dec']
+                        caz_tel_sat = -sd['sat_caz']
+                        gain_sat = sat_ant.get_gain_values(dec_tel_sat, caz_tel_sat)  # (S,)
 
-            # Call the Numba-accelerated function
-            T_sys_arr = compute_T_sys_numba(
-                dec_tel, caz_tel, f_RX, max_gain, eta_rad, T_phy, T_RX_vals,
-                sat_dec_arr, sat_caz_arr, sat_rng_arr, sat_temp_arr, lnk_bdgt_arr, T_sky_arr
-            )
-            result[t_idx, p_idx, :] = T_sys_arr
+                        r_S = sd['sat_distances'].astype(np.float64)
+                        f_F = f_RX_array.astype(np.float64)
+                        c = 3.0e8
+                        fspl_inv = ((c / f_F)[np.newaxis, :] / (4.0 * np.pi * r_S[:, np.newaxis])) ** 2  # (S, F)
+
+                        kernel = gain_sat[:, np.newaxis] * fspl_inv * sd['sat_temps']  # (S, F)
+
+                        # For each pointing, compute telescope gain over S sats and reduce
+                        tel_ant = instrument.get_antenna()
+                        for p_idx in range(n_pointings):
+                            dec_tel = dec_tel_t[p_idx]
+                            caz_tel = caz_tel_t[p_idx]
+                            dec_sat_tel, caz_sat_tel = ground_to_beam_coord_vectorized(
+                                sd['sat_dec'], sd['sat_caz'], dec_tel, caz_tel
+                            )  # (S,)
+                            gain_tel = tel_ant.get_gain_values(dec_sat_tel, caz_sat_tel)  # (S,)
+                            T_sat_total[p_idx, :] += (gain_tel[:, np.newaxis] * kernel).sum(axis=0)
+
+        # Final combination
+        T_A = (1 / (4 * np.pi)) * (T_sat_total + max_gain * T_sky_arr)
+        T_sys = T_A + (1 - eta_rad) * T_phy + T_RX_vals[np.newaxis, :]
+        result[t_idx, :, :] = T_sys
 
     return result

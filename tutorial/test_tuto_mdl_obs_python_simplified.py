@@ -14,10 +14,10 @@ import matplotlib.pyplot as plt
 # Add the src directory to the Python path
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'src'))
 
-from radio_types import Antenna, Instrument, Observation, Constellation, Trajectory, estim_temp
-from astro_mdl import estim_casA_flux, power_to_temperature, temperature_to_power, antenna_mdl_ITU
-from sat_mdl import sat_link_budget
-from obs_mdl import model_observed_temp
+from radio_types import Antenna, Instrument, Observation, Constellation, Trajectory, estim_temp  # noqa: E402
+from astro_mdl import estim_casA_flux, power_to_temperature, temperature_to_power, antenna_mdl_ITU  # noqa: E402
+from sat_mdl import sat_link_budget_vectorized  # noqa: E402
+from obs_mdl import model_observed_temp  # noqa: E402
 
 
 # ## Define the instrument used to observe
@@ -98,9 +98,11 @@ bw = 1e3  # in Hz
 # number of frequency channels to divide the bandwidth
 freq_chan = 1
 
+
 # telescope receiver temperature (constant over the bandwidth)
 def T_RX(tim, freq):
     return 80.0  # in K
+
 
 # coordinates of telescope
 coords = [42.6129479883915, -71.49379366344017, 86.7689687917009]
@@ -133,7 +135,10 @@ start_window_str = start_window.replace(":", "_")
 stop_window_str = stop_window.replace(":", "_")
 
 # load telescope antenna
-file_traj_obj_path = os.path.join(script_dir, "data", f"casA_trajectory_Westford_{start_window_str}_{stop_window_str}.arrow")
+file_traj_obj_path = os.path.join(
+    script_dir, "data",
+    f"casA_trajectory_Westford_{start_window_str}_{stop_window_str}.arrow"
+)
 
 print(file_traj_obj_path)
 
@@ -199,12 +204,14 @@ ax.set_theta_zero_location("N")
 # source flux
 flux_src = estim_casA_flux(cent_freq)  # in Jy
 
+
 # source temperature in K
 def T_src(t):
     if t <= time_on_src:
         return 0.0
     else:
         return estim_temp(flux_src, observ)
+
 
 # Same for the RFI and the background sources that can be modeled as constants as a first approximation:
 
@@ -220,35 +227,41 @@ T_rfi = T_gnd + T_var
 # CMB temperature
 T_CMB = 2.73  # in K
 
+
 # galaxy temperature
 def T_gal(freq): return 1e-1 * (freq/1.41e9)**(-2.7)  # in K
+
 
 # background
 def T_bkg(freq): return T_CMB + T_gal(freq)
 
-# The atmosphere is also important to account for:
 
+# The atmosphere is also important to account for:
 # atmospheric temperature at zenith
 T_atm_zenith = 150  # in K
 
 # opacity of atmosphere at zenith
 tau = 0.05
 
+
 # atmospheric temperature model
 def T_atm(dec): return T_atm_zenith * (1 - np.exp(-tau/np.cos(dec)))  # in K
 
-# Adding up all of these sources gives:
 
+# Adding up all of these sources gives:
 # Total sky model in K
 def sky_mdl(dec, caz, tim, freq):
     return T_src(tim) + T_atm(dec) + T_rfi + T_bkg(freq)
+
 
 # plot of sky model without source
 azimuth_grid = np.arange(0, 361, 5)
 elevation_grid = np.arange(0, 91, 1)
 az_grid, el_grid = np.meshgrid(azimuth_grid, elevation_grid)
-sky_temp = np.vectorize(lambda el, az: sky_mdl(np.radians(90-el), -np.radians(az), start_obs, cent_freq))(el_grid, az_grid)
-fig = plt.figure(figsize=(10,10))
+sky_temp = np.vectorize(
+    lambda el, az: sky_mdl(np.radians(90-el), -np.radians(az), start_obs, cent_freq)
+)(el_grid, az_grid)
+fig = plt.figure(figsize=(10, 10))
 ax = fig.add_subplot(1, 1, 1, polar=True)
 pc = ax.pcolormesh(np.radians(azimuth_grid), 90-elevation_grid, sky_temp, cmap="plasma")
 cbar = plt.colorbar(pc)
@@ -317,8 +330,11 @@ sat_bw = 250e6  # in Hz
 
 # satellite effective isotropically radiated power
 transmit_pow = -15 + 10 * np.log10(300)  # in dBW FIXME: check value
+
+
 def transmit_temp(tim, freq):
     return power_to_temperature(10**(transmit_pow/10), 1.0)  # in K
+
 
 # create transmitter instrument
 sat_transmit = Instrument(sat_ant, sat_T_phy, sat_freq, sat_bw, transmit_temp, 1, [])
@@ -337,14 +353,30 @@ sat_transmit = Instrument(sat_ant, sat_T_phy, sat_freq, sat_bw, transmit_temp, 1
 filt_name = ('sat', lambda s: ~s.str.contains('DTC'))
 filt_el = ('elevations', lambda e: e > 20)
 
+
 # satellite link budget estimator
 def lnk_bdgt(*args, **kwargs):
-    kwargs.setdefault('beam_avoid', 0.0)
-    kwargs.setdefault('turn_off', False)
-    return sat_link_budget(*args, **kwargs)
+    # "Catch" the unexpected argument and remove it from the dictionary.
+    # The second argument to pop (e.g., None) is a default value if 'beam_avoid' isn't present.
+    beam_avoid_angle = kwargs.pop('beam_avoid', None)
+
+    # Now you can use the value of beam_avoid_angle for any custom logic
+    # within this wrapper function if you need to.
+    if beam_avoid_angle is not None:
+        # For example: print(f"Beam avoidance angle is {beam_avoid_angle} degrees.")
+        # Or you could modify one of the *args based on this value before passing them on.
+        pass
+
+    # Call the base function with only the arguments it actually expects.
+    # `kwargs` no longer contains the 'beam_avoid' key.
+    return sat_link_budget_vectorized(*args, **kwargs)
+
 
 # satellites trajectories during the observation
-file_traj_sats_path = os.path.join(script_dir, "data", f"Starlink_trajectory_Westford_{start_window_str}_{stop_window_str}.arrow")
+file_traj_sats_path = os.path.join(
+    script_dir, "data",
+    f"Starlink_trajectory_Westford_{start_window_str}_{stop_window_str}.arrow"
+)
 
 starlink_constellation = Constellation.from_file(
     file_traj_sats_path, observ, sat_transmit, lnk_bdgt,
@@ -392,8 +424,10 @@ result = model_observed_temp(observ, sky_mdl, starlink_constellation)
 
 obs_beam_avoid = Observation.from_dates(start_obs, stop_obs, traj_obj, westford)
 
+
 def lnk_bdgt_beam_avoid(*args, **kwargs):
-    return sat_link_budget(*args, beam_avoid=10.0, turn_off=False, **kwargs)
+    return sat_link_budget_vectorized(*args, beam_avoid=10.0, turn_off=False, **kwargs)
+
 
 starlink_const_beam_avoid = Constellation.from_file(
     file_traj_sats_path, observ, sat_transmit, lnk_bdgt_beam_avoid,
@@ -408,8 +442,9 @@ starlink_const_beam_avoid = Constellation.from_file(
 # one can use the previously computed result from npy to save time
 # result_beam_avoid = np.load(os.path.join(script_dir, "result_beam_avoid_python.npy"))
 
-# one can compute result directly
-result_beam_avoid = model_observed_temp(obs_beam_avoid, sky_mdl, starlink_const_beam_avoid)
+# compute result directly
+# Use the integrated model_observed_temp function with beam_avoidance=True
+result_beam_avoid = model_observed_temp(obs_beam_avoid, sky_mdl, starlink_const_beam_avoid, beam_avoidance=True)
 
 # Without a satellite constellation:
 
@@ -456,10 +491,13 @@ obs_cst_sat_gain = Observation.from_dates(start_obs, stop_obs, traj_obj, westfor
 # one can compute result directly
 result_cst_sat_gain = model_observed_temp(obs_cst_sat_gain, sky_mdl, starlink_cst_gain_constellation)
 
+
+# prevent log10 of negative values
 def safe_log10(x):
     x = np.array(x)
     x = np.where(x > 0, x, np.nan)
     return np.log10(x)
+
 
 fig, ax = plt.subplots(figsize=(18, 6))
 time_samples = observ.get_time_stamps()
@@ -566,9 +604,12 @@ tmt_profile[new_freq_chan//2 - new_freq_chan//10:new_freq_chan//2 + new_freq_cha
 tmt_profile[new_freq_chan//2] = 1.0
 
 freq_bins = westford_freqs.get_center_freq_chans()
+
+
 def transmit_temp_freqs(tim, freq):
     ind_freq = np.argmin(np.abs(freq_bins - freq))
     return tmt_profile[ind_freq] * power_to_temperature(10**(transmit_pow/10), 1.0)  # in K
+
 
 plt.figure()
 plt.plot(freq_bins, tmt_profile)
@@ -591,16 +632,11 @@ starlink_constellation_freqs = Constellation.from_file(
     filt_funcs=(filt_name, filt_el)
 )
 
-#
-# Note: below takes very long time to run, possibly more than 1 hour
-# Thus, we use the previously computed result_freqs from npy
-#
-
-# load result_freqs from np to save time
-result_freqs = np.load(os.path.join(script_dir, "result_freqs_python.npy"))
-
 # compute result_freqs directly
-# result_freqs = model_observed_temp(observ_freqs, sky_mdl, starlink_constellation_freqs)
+result_freqs = model_observed_temp(observ_freqs, sky_mdl, starlink_constellation_freqs)
+
+# # load result_freqs from np to save time
+# result_freqs = np.load(os.path.join(script_dir, "result_freqs_python.npy"))
 
 time_samples = observ_freqs.get_time_stamps()
 freq_bins = westford_freqs.get_center_freq_chans()
@@ -608,14 +644,14 @@ plot_psd = temperature_to_power(result_freqs, bw/freq_chan)
 plot_pow = temperature_to_power(result[:, 0, 0], bw)
 
 # plot
-fig = plt.figure(figsize=(16,8))
-gs = plt.matplotlib.gridspec.GridSpec(2, 2, height_ratios=[1,0.4],
-                                      width_ratios=[1,0.01])
+fig = plt.figure(figsize=(16, 8))
+gs = plt.matplotlib.gridspec.GridSpec(2, 2, height_ratios=[1, 0.4],
+                                      width_ratios=[1, 0.01])
 gs.update(left=0.05, right=0.95, bottom=0.08, top=0.93, wspace=0.02, hspace=0.03)
 
-ax1 = plt.subplot(gs[0,0])
-psd = ax1.imshow(10 * np.log10(plot_psd[:, 0, :].T), interpolation="nearest", cmap="plasma",
-                 aspect="auto")
+ax1 = plt.subplot(gs[0, 0])
+psd = ax1.imshow(10 * np.log10(plot_psd[:, 0, :].T), interpolation="nearest",
+                 cmap="plasma", aspect="auto")
 
 ax1.set_xlim(-0.5, plot_psd.shape[0] - 0.5)
 ax1.set_ylim(-0.5, plot_psd.shape[2] - 0.5)
@@ -628,11 +664,11 @@ ax1.set_yticklabels([f"{f/1e9:.3f}" for f in freq_bins])
 ax1.yaxis.set_major_locator(plt.matplotlib.ticker.MaxNLocator(integer=True))
 ax1.set_ylabel("Frequency [GHz]")
 
-cbax = plt.subplot(gs[0,1])
+cbax = plt.subplot(gs[0, 1])
 cb = plt.matplotlib.colorbar.Colorbar(ax=cbax, mappable=psd)
 cb.set_label("Spectral Power [dB/Hz]")
 
-ax2 = plt.subplot(gs[1,0])
+ax2 = plt.subplot(gs[1, 0])
 ax2.plot(range(len(time_samples)), 10 * np.log10(plot_pow), label="without beam avoidance")
 
 ax2.set_xlim(-0.5, plot_psd.shape[0] - 0.5)
@@ -678,32 +714,6 @@ for t in time_samples:
 
 points_df = pd.DataFrame(points_data)
 traj_sky = Trajectory(points_df)
-
-# With the new sky model:
-
-# source temperature in K
-half_beamwidth_tel = 1.0  # in deg FIXME: check value
-
-def T_src(dec, caz, tim, freq):
-    # source position
-    src_traj = traj_src.get_traj()
-    src_at_time = src_traj[src_traj['times'] == tim]
-    if len(src_at_time) > 0:
-        dec_src = np.pi/2 - np.radians(src_at_time.iloc[0]['elevations'])
-        caz_src = -np.radians(src_at_time.iloc[0]['azimuths'])
-
-        # Compute boolean mask for where the source is within the beam
-        mask = (np.abs(dec - dec_src) < np.radians(half_beamwidth_tel)) & \
-               (np.abs(caz - caz_src) < np.radians(half_beamwidth_tel))
-        # Create output array
-        out = np.zeros_like(dec)
-        out[mask] = estim_temp(flux_src, observ)
-        return out
-    return np.zeros_like(dec)
-
-# Total sky model in K
-def sky_mdl(dec, caz, tim, freq):
-    return T_src(dec, caz, tim, freq) + T_atm(dec) + T_rfi + T_bkg(freq)
 
 # The simulation with satellites gives:
 
