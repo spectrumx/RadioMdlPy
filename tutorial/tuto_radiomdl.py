@@ -14,10 +14,14 @@ import matplotlib.pyplot as plt
 # Add the src directory to the Python path
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'src'))
 
-from radio_types import Antenna, Instrument, Observation, Constellation, Trajectory, estim_temp  # noqa: E402
-from astro_mdl import estim_casA_flux, power_to_temperature, temperature_to_power, antenna_mdl_ITU  # noqa: E402
-from sat_mdl import sat_link_budget_vectorized  # noqa: E402, F401
-from obs_mdl import model_observed_temp  # noqa: E402, F401
+from radio_types import Antenna, Instrument, Observation, Constellation, Trajectory  # noqa: E402
+from astro_mdl import (  # noqa: E402
+    estim_casA_flux, power_to_temperature, temperature_to_power,
+    antenna_mdl_ITU, estim_temp
+)
+from sat_mdl import sat_link_budget_vectorized  # noqa: E402
+from obs_mdl import model_observed_temp  # noqa: E402
+import antenna_pattern  # noqa: E402
 
 
 # ## Define the instrument used to observe
@@ -204,13 +208,17 @@ ax.set_theta_zero_location("N")
 # source flux
 flux_src = estim_casA_flux(cent_freq)  # in Jy
 
+# Pre-calculate effective aperture for performance optimization
+max_gain = tel_ant.get_boresight_gain()
+A_eff_max = antenna_pattern.gain_to_effective_aperture(max_gain, cent_freq)
+
 
 # source temperature in K
 def T_src(t):
     if t <= time_on_src:
         return 0.0
     else:
-        return estim_temp(flux_src, observ)
+        return estim_temp(flux_src, A_eff_max)
 
 
 # Same for the RFI and the background sources that can be modeled as constants as a first approximation:
@@ -412,11 +420,11 @@ ax.set_theta_zero_location("N")
 # The `model_observed_temp` takes as input the `Observation` and can also take a
 # `sky_mdl` function and one or a vector of `Constellation`.
 
-# # one can compute result directly
-# result = model_observed_temp(observ, sky_mdl, starlink_constellation)
+# one can compute result directly
+result = model_observed_temp(observ, sky_mdl, starlink_constellation)
 
 # one can use the previously computed result from npy to save time
-result = np.load(os.path.join(script_dir, "result_python.npy"))
+# result = np.load(os.path.join(script_dir, "result_python.npy"))
 
 # The method also have a keyword `beam_avoid` that takes an angle value. If the
 # angle between the boresight of a satellite and the telescope pointing direction
@@ -439,21 +447,22 @@ starlink_const_beam_avoid = Constellation.from_file(
     filt_funcs=(filt_name, filt_el)
 )
 
-# # one can compute result directly
-# result_beam_avoid = model_observed_temp(obs_beam_avoid, sky_mdl, starlink_const_beam_avoid, beam_avoidance=True)
-
 # one can use the previously computed result from npy to save time
-result_beam_avoid = np.load(os.path.join(script_dir, "result_beam_avoid_python.npy"))
+# result_beam_avoid = np.load(os.path.join(script_dir, "result_beam_avoid_python.npy"))
+
+# compute result directly
+# Use the integrated model_observed_temp function with beam_avoidance=True
+result_beam_avoid = model_observed_temp(obs_beam_avoid, sky_mdl, starlink_const_beam_avoid, beam_avoidance=True)
 
 # Without a satellite constellation:
 
 obs_src = Observation.from_dates(start_obs, stop_obs, traj_obj, westford)
 
-# # one can compute result directly
-# result_src = model_observed_temp(obs_src, sky_mdl)
-
 # one can use the previously computed result from npy to save time
-result_src = np.load(os.path.join(script_dir, "result_src_python.npy"))
+# result_src = np.load(os.path.join(script_dir, "result_src_python.npy"))
+
+# one can compute result directly
+result_src = model_observed_temp(obs_src, sky_mdl)
 
 # With a constellation of satellites that are omni-directional and low power:
 
@@ -484,11 +493,11 @@ starlink_cst_gain_constellation = Constellation.from_file(
 
 obs_cst_sat_gain = Observation.from_dates(start_obs, stop_obs, traj_obj, westford)
 
-# # one can compute result directly
-# result_cst_sat_gain = model_observed_temp(obs_cst_sat_gain, sky_mdl, starlink_cst_gain_constellation)
-
 # one can use the previously computed result from npy to save time
-result_cst_sat_gain = np.load(os.path.join(script_dir, "result_cst_sat_gain_python.npy"))
+# result_cst_sat_gain = np.load(os.path.join(script_dir, "result_cst_sat_gain_python.npy"))
+
+# one can compute result directly
+result_cst_sat_gain = model_observed_temp(obs_cst_sat_gain, sky_mdl, starlink_cst_gain_constellation)
 
 
 # prevent log10 of negative values
@@ -623,6 +632,7 @@ sat_transmit_freqs = Instrument(sat_ant, sat_T_phy, sat_freq, sat_bw, transmit_t
 
 starlink_constellation_freqs = Constellation.from_file(
     file_traj_sats_path, observ_freqs, sat_transmit_freqs,
+    sat_link_budget_vectorized,
     name_tag='sat',
     time_tag='timestamp',
     elevation_tag='elevations',
@@ -631,16 +641,11 @@ starlink_constellation_freqs = Constellation.from_file(
     filt_funcs=(filt_name, filt_el)
 )
 
-#
-# Note: below takes very long time to run, possibly more than 1 hour
-# Thus, we use the previously computed result_freqs from npy
-#
+# compute result_freqs directly
+result_freqs = model_observed_temp(observ_freqs, sky_mdl, starlink_constellation_freqs)
 
-# # compute result_freqs directly
-# result_freqs = model_observed_temp(observ_freqs, sky_mdl, starlink_constellation_freqs)
-
-# load result_freqs from np to save time
-result_freqs = np.load(os.path.join(script_dir, "result_freqs_python.npy"))
+# # load result_freqs from np to save time
+# result_freqs = np.load(os.path.join(script_dir, "result_freqs_python.npy"))
 
 time_samples = observ_freqs.get_time_stamps()
 freq_bins = westford_freqs.get_center_freq_chans()
@@ -719,7 +724,6 @@ for t in time_samples:
 points_df = pd.DataFrame(points_data)
 traj_sky = Trajectory(points_df)
 
-
 # The simulation with satellites gives:
 
 # --- Efficient sky map modeling for a single time_plot ---
@@ -732,25 +736,25 @@ elevation_grid = np.arange(0, 91, 1)
 n_az = len(azimuth_grid)
 n_el = len(elevation_grid)
 
-# # Prepare output array for the case WITH satellites
-# map_grid = np.zeros((n_el, n_az))
-
-# # Loop over the grid for the case WITH satellites directly
-# for i, el in enumerate(elevation_grid):
-#     for j, az in enumerate(azimuth_grid):
-#         point_df = pd.DataFrame({
-#             'times': [time_plot],
-#             'azimuths': [az],
-#             'elevations': [el],
-#             'distances': [np.inf]
-#         })
-#         traj = Trajectory(point_df)
-#         obs = Observation.from_dates(time_plot, time_plot, traj, westford)
-#         result = model_observed_temp(obs, sky_mdl, starlink_constellation)
-#         map_grid[i, j] = result[0, 0, 0]
+# Prepare output array for the case WITH satellites
+map_grid = np.zeros((n_el, n_az))
 
 # one can use the previously computed map_grid from npy
-map_grid = np.load(os.path.join(script_dir, "map_grid_python.npy"))
+# map_grid = np.load(os.path.join(script_dir, "map_grid_python.npy"))
+
+# Loop over the grid for the case WITH satellites directly
+for i, el in enumerate(elevation_grid):
+    for j, az in enumerate(azimuth_grid):
+        point_df = pd.DataFrame({
+            'times': [time_plot],
+            'azimuths': [az],
+            'elevations': [el],
+            'distances': [np.inf]
+        })
+        traj = Trajectory(point_df)
+        obs = Observation.from_dates(time_plot, time_plot, traj, westford)
+        result = model_observed_temp(obs, sky_mdl, starlink_constellation)
+        map_grid[i, j] = result[0, 0, 0]
 
 # Plotting for the case WITH satellites
 fig = plt.figure(figsize=(16, 16))
@@ -780,25 +784,25 @@ ax.set_theta_zero_location("N")
 
 # And without accounting for satellites:
 
-# # Prepare output array for the case WITHOUT satellites
-# map_grid_no_sat = np.zeros((n_el, n_az))
-
-# # computing map_grid_no_sat directly
-# for i, el in enumerate(elevation_grid):
-#     for j, az in enumerate(azimuth_grid):
-#         point_df = pd.DataFrame({
-#             'times': [time_plot],
-#             'azimuths': [az],
-#             'elevations': [el],
-#             'distances': [np.inf]
-#         })
-#         traj = Trajectory(point_df)
-#         obs = Observation.from_dates(time_plot, time_plot, traj, westford)
-#         result = model_observed_temp(obs, sky_mdl)
-#         map_grid_no_sat[i, j] = result[0, 0, 0]
+# Prepare output array for the case WITHOUT satellites
+map_grid_no_sat = np.zeros((n_el, n_az))
 
 # One can use the previously computed map_grid_no_sat from npy
-map_grid_no_sat = np.load(os.path.join(script_dir, "map_grid_no_sat_python.npy"))
+# map_grid_no_sat = np.load(os.path.join(script_dir, "map_grid_no_sat_python.npy"))
+
+# computing map_grid_no_sat directly
+for i, el in enumerate(elevation_grid):
+    for j, az in enumerate(azimuth_grid):
+        point_df = pd.DataFrame({
+            'times': [time_plot],
+            'azimuths': [az],
+            'elevations': [el],
+            'distances': [np.inf]
+        })
+        traj = Trajectory(point_df)
+        obs = Observation.from_dates(time_plot, time_plot, traj, westford)
+        result = model_observed_temp(obs, sky_mdl)
+        map_grid_no_sat[i, j] = result[0, 0, 0]
 
 # Plotting for the case WITHOUT satellites
 fig = plt.figure(figsize=(16, 16))
