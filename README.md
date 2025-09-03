@@ -34,6 +34,65 @@ This contains additional learning resources and examples and serves as a referen
 
 ## Installation
 
+### Prerequisites
+
+#### 1. Python Installation
+
+**Windows:**
+- Download Python 3.9+ from [python.org](https://www.python.org/downloads/)
+- During installation, make sure to check "Add Python to PATH"
+- Verify installation: `python --version` in Command Prompt
+
+**macOS:**
+- Install using Homebrew: `brew install python@3.9`
+- Or download from [python.org](https://www.python.org/downloads/)
+- Verify installation: `python3 --version` in Terminal
+
+**Linux (Ubuntu/Debian):**
+- Install using package manager: `sudo apt update && sudo apt install python3.9 python3.9-venv python3.9-pip`
+- Verify installation: `python3.9 --version`
+
+**Linux (CentOS/RHEL/Fedora):**
+- Install using package manager: `sudo dnf install python3.9 python3.9-pip` (Fedora) or `sudo yum install python3.9 python3.9-pip` (CentOS/RHEL)
+- Verify installation: `python3.9 --version`
+
+#### 2. Visual Studio Code (VS Code) Installation
+
+**Windows:**
+- Download VS Code from [code.visualstudio.com](https://code.visualstudio.com/)
+- Run the installer and follow the setup wizard
+- Launch VS Code
+
+**macOS:**
+- Download VS Code from [code.visualstudio.com](https://code.visualstudio.com/)
+- Drag the downloaded file to Applications folder
+- Launch VS Code
+
+**Linux:**
+- Download VS Code from [code.visualstudio.com](https://code.visualstudio.com/)
+- Install the .deb package: `sudo dpkg -i code_*.deb`
+- Or use snap: `sudo snap install code --classic`
+
+#### 3. Jupyter Extension Installation in VS Code for Running a Jupyter Notebook
+
+1. Open VS Code
+2. Go to Extensions (Ctrl+Shift+X or Cmd+Shift+X)
+3. Search for "Jupyter" extension by Microsoft
+4. Click "Install" on the Jupyter extension
+5. Restart VS Code if prompted
+
+#### 4. Project Setup in VS Code
+
+1. Open VS Code
+2. Go to File → Open Folder
+3. Navigate to where you want to clone the repository
+4. Open VS Code's integrated terminal (Ctrl+` or Cmd+`)
+5. Follow the installation steps below
+
+### Installation Steps
+
+**Note:** Run these commands in VS Code's integrated terminal (Ctrl+` or Cmd+`)
+
 It's recommended to create a virtual environment before installing the package:
 
 ```bash
@@ -54,6 +113,16 @@ pip install -e .
 # When you finish working with RadioMdlPy, deactivate the virtual environment
 deactivate
 ```
+
+### Running Jupyter Notebooks in VS Code
+
+After installation, you can run the Jupyter notebooks directly in VS Code:
+
+1. Open a `.ipynb` file from the `tutorial/` directories
+2. VS Code will automatically detect it as a Jupyter notebook
+3. Select your Python interpreter (the one from your virtual environment)
+4. Run cells using Shift+Enter or the Run button
+5. Interactive plots will be displayed inline in VS Code
 
 ### Dependencies
 
